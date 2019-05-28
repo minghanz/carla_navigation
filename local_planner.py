@@ -19,6 +19,7 @@ from agents.navigation.controller import PurePersuitController
 from agents.tools.misc import distance_vehicle, draw_waypoints
 from agents.tools.misc import get_speed
 from agents.navigation.EnvironmentState import EnvironmentState
+from agents.navigation.Cognition import CognitionState
 from agents.navigation.Decision import Decision
 
 
@@ -110,7 +111,8 @@ class LocalPlanner(object):
         self._buffer_size = 50
         self._waypoint_buffer = deque(maxlen=self._buffer_size)    ## Trajectory
         self.EnvironmentInfo = EnvironmentState(vehicle)
-        self.Decision = Decision(vehicle)
+        self.CognitionState = CognitionState()
+        self.Decision = Decision()
 
 
     def __del__(self):
@@ -214,16 +216,15 @@ class LocalPlanner(object):
             return control
 
         # Environment Perception
-        self.EnvironmentInfo.Ego_Perception()
-        self.EnvironmentInfo.Surrounding_Perception()
-        self.EnvironmentInfo.scenerio_analysis()
+        self.EnvironmentInfo.perception()
         
+        self.CognitionState.scenario_cognition(self.EnvironmentInfo)
+
         # Decision
         self._generate_local_path()
-        # self.EnvironmentInfo.Find_front_vehicle(self._waypoint_buffer)
-        
+
         # target_speed, self.target_waypoint = self.Decision.generate_control_target_point(self._waypoint_buffer,self.EnvironmentInfo)
-        target_speed, self.target_waypoint = self.Decision.generate_decision(self._waypoint_buffer,self.EnvironmentInfo)
+        target_speed, self.target_waypoint = self.Decision.generate_decision(self._waypoint_buffer,self.EnvironmentInfo,self.CognitionState)
         self.set_speed(target_speed)
 
         # Control

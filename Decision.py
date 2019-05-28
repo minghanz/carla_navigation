@@ -7,7 +7,8 @@ import numpy as np
 
 import carla
 from agents.tools.misc import get_speed
-from agents.navigation.EnvironmentState import EnvironmentState, Surrounding_vehicle
+from agents.navigation.EnvironmentState import EnvironmentState, Surrounding_vehicle, Surrounding_pedestrian
+from agents.navigation.Cognition import CognitionState
 
 
 def distance_between_two_loc(loc1,loc2):
@@ -34,11 +35,7 @@ class Decision(object):
     """
     AV Decision
     """
-    def __init__(self,vehicle):
-
-        ####cannot be used
-        self.ego_vehicle = vehicle   
-        self.world = self.ego_vehicle.get_world()
+    def __init__(self):
 
         self.target_speed = 30.0/3.6  # m/s
         self.dt = 0.05
@@ -94,7 +91,7 @@ class Decision(object):
         return front_vehicle
 
 
-    def _surrounding_vehicle_location_after_t(self,target_vehicle,time):
+    def _pred_location_after_t(self,target_vehicle,time):
         """
         return a surrounding vehicle location after a given time.
         assumption: surrounding vehicle follows its current speed and direction.
@@ -145,43 +142,83 @@ class Decision(object):
         # return IDM_speed
         target_speed = IDM_speed
         safe_range = 6
+
+        ### for pedestrian
+        for pred_t in np.arange(0.0, 4.0, 0.5):
+            for target_pedestrian in EnvironmentInfo.surrounding_pedestrian_list:
+                if target_pedestrian.speed < 1/3.6:
+                    continue
+                pred_surrounding_loc = self._pred_location_after_t(target_pedestrian,pred_t)
+                if not location_on_the_path(local_path,pred_surrounding_loc,4):
+                    continue
+                else:
+                    return 0
+                
+        #### for vehicle
         while target_speed > 0:
-            safe_speed = True
+            safe_speed = True   
             for pred_t in np.arange(0.0, 3.0, 0.5):
                 pred_ego_loc = self._ego_vehicle_location_after_t_using_v(local_path,EnvironmentInfo,pred_t,target_speed)
                 for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
-                    if target_vehicle.speed < 5/3.6:
+                    if target_vehicle.speed < 5/3.6 and not location_on_the_path(local_path,target_vehicle.location,4):
                         continue
-                    pred_surrounding_loc = self._surrounding_vehicle_location_after_t(target_vehicle,pred_t)
+                    if not EnvironmentInfo.in_intersection and not EnvironmentInfo._vehicle_is_front(target_vehicle):
+                        continue
+                    pred_surrounding_loc = self._pred_location_after_t(target_vehicle,pred_t)
                     if not location_on_the_path(local_path,pred_surrounding_loc,4):
                         continue
                     if distance_between_two_loc(pred_ego_loc,pred_surrounding_loc) < safe_range:
                         safe_speed = False
                         break
-
                 if not safe_speed:
                     break
+            
             if safe_speed:    
                 return target_speed
-            target_speed = target_speed-0.1
+            target_speed = target_speed-1
         
         return 0
 
 
-    def generate_decision(self,local_path,EnvironmentInfo):
+    def _response_traffic_light(self,local_path,EnvironmentInfo,desired_speed):
+        
+        prediction_time = 2
+        if EnvironmentInfo.front_traffic_light:
+            return desired_speed
+
+        if EnvironmentInfo.in_intersection:
+            return desired_speed        
+
+        distance_to_stop = EnvironmentInfo.distance_to_traffic_light
+        if distance_to_stop is None:
+            return desired_speed
+        else:
+            if distance_to_stop < 10 + EnvironmentInfo.ego_vehicle_speed*EnvironmentInfo.ego_vehicle_speed/2/2:
+                return 0
+            # if desired_speed * prediction_time > distance_to_stop:
+            #     return  distance_to_stop/prediction_time 
+            
+            return desired_speed
+
+        return desired_speed
+
+    def generate_decision(self,local_path,EnvironmentInfo,CognitionState):
 
         front_vehicle = self._Find_front_vehicle(local_path,EnvironmentInfo)
         IDM_speed = self._IDM_desired_speed(EnvironmentInfo,front_vehicle)
-        target_speed = self._reachable_set_analysis(local_path,EnvironmentInfo,IDM_speed)
-        target_waypoint_location = self.generate_control_target_point(local_path,EnvironmentInfo)
+        avoidance_speed = self._reachable_set_analysis(local_path,EnvironmentInfo,IDM_speed)
+        traffic_light_response_speed = self._response_traffic_light(local_path,EnvironmentInfo,avoidance_speed)
+        target_speed = traffic_light_response_speed
+
+        target_waypoint_location = self.generate_control_target_point(local_path,EnvironmentInfo,CognitionState)
 
         return target_speed,target_waypoint_location
 
 
-    def generate_control_target_point(self,local_path,EnvironmentInfo):
+    def generate_control_target_point(self,local_path,EnvironmentInfo,CognitionState):
         
         if EnvironmentInfo.ego_vehicle_speed > 10:
-            control_target_dt = 0.3
+            control_target_dt = 0.25
         else:
             control_target_dt = 0.5
         control_target_distance = control_target_dt * EnvironmentInfo.ego_vehicle_speed  ## m
@@ -189,7 +226,7 @@ class Decision(object):
             control_target_distance = 3
 
         
-        if EnvironmentInfo.follow_path:
+        if CognitionState.follow_path:
             waypoint, _ = local_path[0]
             w_last_loc = waypoint.transform.location 
             target_waypoint_location = None

@@ -13,8 +13,28 @@ The agent also responds to traffic lights. """
 from enum import Enum
 
 import carla
+import numpy as np
+import math
+
 from agents.tools.misc import is_within_distance_ahead, compute_magnitude_angle
 
+def compute_magnitude_angle_cz(target_location, current_location, orientation, traffic_orientation):
+    """
+    Compute relative angle and distance between a target_location and a current_location
+
+    :param target_location: location of the target object
+    :param current_location: location of the reference object
+    :param orientation: orientation of the reference object
+    :return: a tuple composed by the distance to the object and the angle between both objects
+    """
+    target_vector = np.array([target_location.x - current_location.x, target_location.y - current_location.y])
+    norm_target = np.linalg.norm(target_vector)
+
+    forward_vector = np.array([math.cos(math.radians(orientation)), math.sin(math.radians(orientation))])
+    traffic_vector = np.array([math.cos(math.radians(traffic_orientation)), math.sin(math.radians(traffic_orientation))])
+    d_angle = math.degrees(math.acos(np.dot(forward_vector, traffic_vector)))
+
+    return (norm_target, d_angle)
 
 class AgentState(Enum):
     """
@@ -70,6 +90,8 @@ class Agent(object):
                  - traffic_light is the object itself or None if there is no
                    red traffic light affecting us
         """
+        # return self._is_light_red_europe_style(lights_list)
+
         if self._map.name == 'Town01' or self._map.name == 'Town02':
             return self._is_light_red_europe_style(lights_list)
         else:
@@ -120,31 +142,39 @@ class Agent(object):
 
         if ego_vehicle_waypoint.is_junction:
             # It is too late. Do not block the intersection! Keep going!
+            print("is_junction")
             return (False, None)
 
         if self._local_planner.target_waypoint is not None:
             map_target_waypoint = self._map.get_waypoint(self._local_planner.target_waypoint)
-            if map_target_waypoint.is_junction:
+            # if map_target_waypoint.is_junction:
+            if True:
                 min_angle = 180.0
                 sel_magnitude = 0.0
                 sel_traffic_light = None
                 for traffic_light in lights_list:
                     loc = traffic_light.get_location()
-                    magnitude, angle = compute_magnitude_angle(loc,
+                    magnitude, angle = compute_magnitude_angle_cz(loc,
                                                                ego_vehicle_location,
-                                                               self._vehicle.get_transform().rotation.yaw)
-                    if magnitude < 60.0 and angle < min(25.0, min_angle):
-                        sel_magnitude = magnitude
-                        sel_traffic_light = traffic_light
-                        min_angle = angle
+                                                               self._vehicle.get_transform().rotation.yaw,
+                                                               traffic_light.get_transform().rotation.yaw-90)
+                    
+                    if magnitude < 60.0:
+                        print(magnitude,angle,min(25.0, min_angle))
+                        ####################   TODO
+                        if angle < min(25.0, min_angle):
+                            sel_magnitude = magnitude
+                            sel_traffic_light = traffic_light
+                            min_angle = angle
 
                 if sel_traffic_light is not None:
-                    if debug:
-                        print('=== Magnitude = {} | Angle = {} | ID = {}'.format(
-                            sel_magnitude, min_angle, sel_traffic_light.id))
-
                     if self._last_traffic_light is None:
                         self._last_traffic_light = sel_traffic_light
+                    
+                    if True:
+                        print('=== Magnitude = {} | Angle = {} | ID = {}'.format(
+                            sel_magnitude, min_angle, sel_traffic_light.id))
+                        print(self._last_traffic_light.state)
 
                     if self._last_traffic_light.state == carla.TrafficLightState.Red:
                         return (True, self._last_traffic_light)
