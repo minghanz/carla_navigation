@@ -31,6 +31,24 @@ def location_on_the_path(local_path,location,sensitive_range):
     return False
 
 
+def location_on_the_path_decouple(local_path,location,sensitive_range):
+
+    v_loc = location
+    d_to_waypoints = []
+    for waypoint in local_path:
+        w_loc = waypoint.transform.location
+        d = distance_between_two_loc(v_loc,w_loc)
+        d_to_waypoints.append(d)
+
+    d_to_waypoints.sort()
+    if d_to_waypoints[0]+d_to_waypoints[1] < sensitive_range:
+        return True
+
+    return False
+
+
+
+
 class CognitionState(object):
     """
     AV driving cognition state
@@ -138,11 +156,27 @@ class CognitionState(object):
             self.follow_path = True
 
         
+    def _find_rear_vehicle_on_target_lane(self,lane,EnvironmentInfo):
 
-    def _put_vehicle_on_lane(self,EnvironmentInfo):
+
+        min_distance = 100
+        rear_vehicle = None
 
         for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
-            pass
+            location_list = EnvironmentInfo.longitudinal_position_after_distance(target_vehicle,EnvironmentInfo.sensor_range+10)
+            if len(location_list) < 1:
+                continue
+            loc_target_vehicle = target_vehicle.location
+            for target_location in location_list:
+                if location_on_the_path_decouple(lane.central_point_list,target_location,EnvironmentInfo.lane_step+3):
+                    if distance_between_two_loc(loc_target_vehicle,EnvironmentInfo.ego_vehicle_location) < min_distance:
+                        min_distance = distance_between_two_loc(loc_target_vehicle,EnvironmentInfo.ego_vehicle_location)
+                        rear_vehicle = target_vehicle
+
+        
+        return rear_vehicle
+            
+
 
 
 

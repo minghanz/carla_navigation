@@ -92,6 +92,8 @@ class EnvironmentState(object):
 
         self.lane_step = 5
 
+        self.enable_perception = False
+
     
     def perception(self):
         """
@@ -112,7 +114,7 @@ class EnvironmentState(object):
         self.ego_vehicle_speed = get_speed(self.ego_vehicle)/3.6   ###### m/s
         self.ego_vehicle_transform = self.ego_vehicle.get_transform()
         self.dt = 0.05
-        self.speed_limit = 60#self.ego_vehicle.get_speed_limit()
+        self.speed_limit = self.ego_vehicle.get_speed_limit()
 
         ego_vehicle_waypoint = self.map.get_waypoint(self.ego_vehicle_location)
         if ego_vehicle_waypoint.is_junction:
@@ -270,14 +272,26 @@ class EnvironmentState(object):
     For Cognition
     """
 
-    def longitudinal_position_after_distance(self,distance):
+    def longitudinal_position_after_distance(self,target_vehicle,distance):
 
-        current_waypoint = self.map.get_waypoint(self.ego_vehicle_location)
+        current_waypoint = self.map.get_waypoint(target_vehicle)
+        if current_waypoint is None:
+            return None
+        
         target_waypoint_list = current_waypoint.next(distance)
-        target_waypoint = target_waypoint_list[0]
-        return target_waypoint.transform.location
+        if len(target_waypoint_list) < 1:
+            return None
+
+        location_list = []
+        for target_waypoint in target_waypoint_list:
+            if target_waypoint is not None:
+                location_list.append(target_waypoint.transform.location)
+
+        return location_list
 
     def is_multilane(self,target_location):
+
+
 
         current_waypoint = self.map.get_waypoint(target_location)
         if self._have_left_lane(current_waypoint) or self._have_right_lane(current_waypoint):
@@ -316,6 +330,9 @@ class EnvironmentState(object):
         if left_lane_marking.type is not carla.LaneMarkingType.Broken:
             return False
 
+        if left_lane_marking.color is not carla.LaneMarkingColor.White:
+            return False
+
         return True
 
     def _have_right_lane(self,waypoint):
@@ -325,6 +342,9 @@ class EnvironmentState(object):
             return False
         
         if right_lane_marking.type is not carla.LaneMarkingType.Broken:
+            return False
+
+        if right_lane_marking.color is not carla.LaneMarkingColor.White:
             return False
 
         return True
@@ -356,6 +376,9 @@ class EnvironmentState(object):
 
     def _generate_lane(self,start_waypoint,reference_path):
 
+        if start_waypoint is None:
+            return None
+
         lane = LaneState()
         central_point_list = []
         
@@ -366,12 +389,13 @@ class EnvironmentState(object):
         target_reference_waypoint = reference_path[search_id][0]
         length_before_interaction = step
         target_waypoint_list = start_waypoint.next(length_before_interaction)
-        if target_waypoint_list is not None:
+        if len(target_waypoint_list) > 0:
             target_waypoint = target_waypoint_list[0]
         else:
-            lane.length_before_interaction = 1
-            lane.central_point_list = []
-            return lane
+            # lane.length_before_interaction = 1
+            # lane.central_point_list = []
+            # return lane
+            return None
 
         central_point_list.append(target_waypoint)
 
