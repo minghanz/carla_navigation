@@ -279,17 +279,13 @@ class Decision(object):
         return local_path_after_decision,step
 
 
-    def target_lane_to_change(self,local_path,EnvironmentInfo,CognitionState)
+    def target_lane_to_change(self,local_path,EnvironmentInfo,CognitionState):
         target_lane_id = CognitionState.target_lane_id
-        if target_lane_id < 0:
-            target_lane_id = ego_y
-
-        return target_lane_id
+        ego_y = CognitionState.ego_y
 
         ######
         # Lane Change Part
         ######
-        ego_y = CognitionState.ego_y
         ego_lane = CognitionState.get_lane_of_id(ego_y)
 
         if ego_lane is None:
@@ -323,7 +319,7 @@ class Decision(object):
 
         return ego_lane
 
-    def safe_to_change_lane(self,lane,EnvironmentInfo,CognitionState)
+    def safe_to_change_lane(self,lane,EnvironmentInfo,CognitionState):
 
         return True
 

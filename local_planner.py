@@ -207,7 +207,7 @@ class LocalPlanner(object):
         # Print States
         print("target speed:",self._target_speed*3.6,"current speed:",self.EnvironmentInfo.ego_vehicle_speed*3.6)
 
-        if True:
+        if False:
             world = self._vehicle.get_world()
             begin = carla.Location(x=self.EnvironmentInfo.ego_vehicle_location.x, y=self.EnvironmentInfo.ego_vehicle_location.y, z=self.EnvironmentInfo.ego_vehicle_location.z+1)
             end = carla.Location(x=self.target_waypoint.x,y=self.target_waypoint.y,z=self.target_waypoint.z+0.5)

@@ -274,7 +274,7 @@ class EnvironmentState(object):
 
     def longitudinal_position_after_distance(self,target_vehicle,distance):
 
-        current_waypoint = self.map.get_waypoint(target_vehicle)
+        current_waypoint = self.map.get_waypoint(target_vehicle.location)
         if current_waypoint is None:
             return None
         

@@ -178,7 +178,7 @@ class CognitionState(object):
         min_rear_distance = 100
         rear_vehicle = None
 
-        min_front_distance
+        min_front_distance = 100
         front_vehicle = None
 
         for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
@@ -199,7 +199,7 @@ class CognitionState(object):
                 if location_on_the_path_decouple(lane.central_point_list,target_location,EnvironmentInfo.lane_step+3):
                     rear_dis = distance_between_two_loc(loc_target_vehicle,EnvironmentInfo.ego_vehicle_location)
                     if rear_dis < min_rear_distance:
-                        min_distance = rear_dis
+                        min_rear_distance = rear_dis
                         rear_vehicle = target_vehicle
 
         lane.front_vehicle = front_vehicle
