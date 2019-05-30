@@ -267,7 +267,7 @@ class Decision(object):
         else:
             target_lane_id = CognitionState.target_lane_id
             if target_lane_id < 0:
-                target_lane_id = 2
+                target_lane_id = CognitionState.ego_y
             for lane in CognitionState.lane_list:
                 if lane.id == target_lane_id:
                     target_lane = lane
