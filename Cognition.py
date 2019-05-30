@@ -17,6 +17,12 @@ def distance_between_two_loc(loc1,loc2):
 
 def location_on_the_path(local_path,location,sensitive_range):
 
+    if len(local_path) < 4:
+        return False
+
+    if location is None:
+        return False
+
     v_loc = location
     d_to_waypoints = []
     for (waypoint,_) in local_path:
@@ -72,26 +78,26 @@ class CognitionState(object):
 
         is_multilane = EnvironmentInfo.is_multilane(EnvironmentInfo.ego_vehicle_location)
         if is_multilane:
-            # self.follow_path = False
-            
+
             self._generate_lane_list(EnvironmentInfo,reference_path)
-            
+
+            self._locating_vehicles_on_lanes(EnvironmentInfo)
+
             self._find_target_lane_id(reference_path,EnvironmentInfo)
 
             print("target:",self.target_lane_id,self.length_before_follow_lane,"ego:",self.ego_y)
 
-            self._should_follow_lane(reference_path,EnvironmentInfo,is_multilane)
+            self._should_follow_lane(reference_path,EnvironmentInfo)
 
-            
 
     def _generate_lane_list(self,EnvironmentInfo,reference_path):
-        
+
         self.lane_list = []
 
         central_lane = EnvironmentInfo.get_lane(0,reference_path)
         central_lane.id = 0
         self.lane_list.append(central_lane)
-        
+
         left_lane_num = 1
         left_lane = EnvironmentInfo.get_lane(left_lane_num,reference_path)
         while left_lane is not None:
@@ -129,12 +135,12 @@ class CognitionState(object):
 
         if min_length < 180:
             free_driving = False
-        
+
         if free_driving:
             self.target_lane_id = -1
             self.length_before_follow_lane = -1
             return
-        
+
         self.length_before_follow_lane = min_length
 
         target_id = -2
@@ -146,38 +152,55 @@ class CognitionState(object):
 
         self.target_lane_id = target_id
         self.length_before_follow_lane = min_length
-                
-    def _should_follow_lane(self,reference_path,EnvironmentInfo,is_multilane):
 
-        if is_multilane:
-            self.follow_path = False
+    def _should_follow_lane(self,reference_path,EnvironmentInfo):
+
+        self.follow_path = False
 
         if self.length_before_follow_lane > 0 and self.length_before_follow_lane < 50 and self.ego_y is not self.target_lane_id:
             self.follow_path = True
 
-        
-    def _find_rear_vehicle_on_target_lane(self,lane,EnvironmentInfo):
+    def get_lane_of_id(self,id):
 
+        for lane in self.lane_list:
+            if lane.id == id:
+                return lane
 
-        min_distance = 100
+        return None
+
+    def _locating_vehicles_on_lanes(self,EnvironmentInfo):
+
+        for lane in self.lane_list:
+            self._find_front_rear_vehicle_on_target_lane(lane,EnvironmentInfo)
+
+    def _find_front_rear_vehicle_on_target_lane(self,lane,EnvironmentInfo):
+
+        min_rear_distance = 100
         rear_vehicle = None
 
+        min_front_distance
+        front_vehicle = None
+
         for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
+            ## check if target vehicle is in front
+            if location_on_the_path_decouple(lane.central_point_list,target_vehicle.location,EnvironmentInfo.lane_step+3):
+                front_dis = distance_between_two_loc(target_vehicle.location,EnvironmentInfo.ego_vehicle_location)
+                if front_dis < min_front_distance:
+                    min_front_distance = front_dis
+                    front_vehicle = target_vehicle
+                continue
+
+            ## check if target_vehicle is in rear
             location_list = EnvironmentInfo.longitudinal_position_after_distance(target_vehicle,EnvironmentInfo.sensor_range+10)
             if len(location_list) < 1:
                 continue
             loc_target_vehicle = target_vehicle.location
             for target_location in location_list:
                 if location_on_the_path_decouple(lane.central_point_list,target_location,EnvironmentInfo.lane_step+3):
-                    if distance_between_two_loc(loc_target_vehicle,EnvironmentInfo.ego_vehicle_location) < min_distance:
-                        min_distance = distance_between_two_loc(loc_target_vehicle,EnvironmentInfo.ego_vehicle_location)
+                    rear_dis = distance_between_two_loc(loc_target_vehicle,EnvironmentInfo.ego_vehicle_location)
+                    if rear_dis < min_rear_distance:
+                        min_distance = rear_dis
                         rear_vehicle = target_vehicle
 
-        
-        return rear_vehicle
-            
-
-
-
-
-
+        lane.front_vehicle = front_vehicle
+        lane.rear_vehicle = rear_vehicle
