@@ -108,12 +108,13 @@ class LocalPlanner(object):
         self._global_plan = False
         # queue with tuples of (waypoint, RoadOption)
         self._waypoints_queue = deque(maxlen=20000)
-        self._buffer_size = 50
+        self._buffer_size = 200
         self._waypoint_buffer = deque(maxlen=self._buffer_size)    ## Trajectory
         self.EnvironmentInfo = EnvironmentState(vehicle)
         self.CognitionState = CognitionState()
         self.Decision = Decision()
-
+    
+        self.local_path = deque(maxlen=50)
 
     def __del__(self):
         if self._vehicle:
@@ -154,46 +155,18 @@ class LocalPlanner(object):
             else:
                 break
 
-        while self._waypoints_queue and len(self._waypoint_buffer)<50:
+        while self._waypoints_queue and len(self._waypoint_buffer)<self._buffer_size:
             waypoint_tuple =  self._waypoints_queue.popleft()
             waypoint = waypoint_tuple[0]
             self._waypoint_buffer.append(waypoint_tuple)
 
-
-    def _calculate_control_target_waypoint(self):
-
-        ### Trajectory Tracking
-        vehicle_transform = self.EnvironmentInfo.ego_vehicle_transform
-        if self.EnvironmentInfo.ego_vehicle_speed > 10:
-            control_target_dt = 0.3
-        else:
-            control_target_dt = 0.5
-        control_target_distance = control_target_dt * self.EnvironmentInfo.ego_vehicle_speed  ## m
-        if control_target_distance < 3:
-            control_target_distance = 3
-
-        waypoint, _ = self._waypoint_buffer[0]
-        w_last_loc = waypoint.transform.location 
-        target_waypoint_location = None
-        distance_to_ego = 0
-        for i, (waypoint, _) in enumerate(self._waypoint_buffer):
-            angle = angle_between_ego_vehicle_direction_and_point(vehicle_transform,waypoint.transform.location)
-            if abs(angle) > np.pi/2:
-                continue
-            w_loc = waypoint.transform.location
-            distance_to_ego += distance_between_two_loc(w_loc,w_last_loc)
-            if distance_to_ego > control_target_distance:
-                w_diff_vec = np.array([w_loc.x - w_last_loc.x, w_loc.y - w_last_loc.y, 0.0])
-                w_last_vec = np.array([w_last_loc.x,w_last_loc.y,0.0])
-                w_target = w_last_vec + w_diff_vec * (1-(distance_to_ego-control_target_distance)/np.linalg.norm(w_diff_vec))
-                target_waypoint_location = carla.Location(x=w_target[0], y=w_target[1], z=self.EnvironmentInfo.ego_vehicle_location.z)
+        self.local_path.clear()
+        for i in range(0,49):
+            if len(self._waypoint_buffer)>i:
+                waypoint = self._waypoint_buffer[i]
+                self.local_path.append(waypoint)
+            else:
                 break
-            w_last_loc = w_loc
-
-        if target_waypoint_location is None:
-            target_waypoint_location = w_loc
-
-        return target_waypoint_location
 
 
     def run_step(self, debug=True):
@@ -218,13 +191,14 @@ class LocalPlanner(object):
         # Environment Perception
         self.EnvironmentInfo.perception()
         
-        self.CognitionState.scenario_cognition(self.EnvironmentInfo)
-
-        # Decision
+        # Get reference plan
         self._generate_local_path()
 
-        # target_speed, self.target_waypoint = self.Decision.generate_control_target_point(self._waypoint_buffer,self.EnvironmentInfo)
-        target_speed, self.target_waypoint = self.Decision.generate_decision(self._waypoint_buffer,self.EnvironmentInfo,self.CognitionState)
+        # Cognition
+        self.CognitionState.scenario_cognition(self._waypoint_buffer,self.EnvironmentInfo)
+
+        # Decision
+        target_speed, self.target_waypoint = self.Decision.generate_decision(self.local_path,self.EnvironmentInfo,self.CognitionState)
         self.set_speed(target_speed)
 
         # Control

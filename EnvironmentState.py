@@ -9,7 +9,20 @@ import carla
 from agents.tools.misc import get_speed
 from agents.tools.clock import WorldClock
 
+def location_on_reference_path(reference_path,location,sensitive_range):
 
+    v_loc = location
+    d_to_waypoints = []
+    for (waypoint,_) in reference_path:
+        w_loc = waypoint.transform.location
+        d = distance_between_two_loc(v_loc,w_loc)
+        d_to_waypoints.append(d)
+
+    d_to_waypoints.sort()
+    if d_to_waypoints[0]+d_to_waypoints[1] < sensitive_range:
+        return True
+
+    return False
 
 def distance_between_two_loc(loc1,loc2):
     d = (loc1.x-loc2.x)*(loc1.x-loc2.x)+(loc1.y-loc2.y)*(loc1.y-loc2.y)
@@ -29,8 +42,13 @@ def compute_magnitude_angle(target_location, current_location, orientation, traf
 
 class LaneState(object):
     def __init__(self):
+        self.id = None
         self.length_before_interaction = None
         self.central_point_list = None
+        self.front_vehicle = None
+        self.rear_vehicle = None
+        # self.start_waypoint = None
+        # self.end_waypoint = None
 
 class Surrounding_pedestrian(object):
     def __init__(self):
@@ -72,6 +90,8 @@ class EnvironmentState(object):
         self.front_traffic_light = True
         self.distance_to_traffic_light = None
 
+        self.lane_step = 5
+
     
     def perception(self):
         """
@@ -92,7 +112,7 @@ class EnvironmentState(object):
         self.ego_vehicle_speed = get_speed(self.ego_vehicle)/3.6   ###### m/s
         self.ego_vehicle_transform = self.ego_vehicle.get_transform()
         self.dt = 0.05
-        self.speed_limit = self.ego_vehicle.get_speed_limit()
+        self.speed_limit = 60#self.ego_vehicle.get_speed_limit()
 
         ego_vehicle_waypoint = self.map.get_waypoint(self.ego_vehicle_location)
         if ego_vehicle_waypoint.is_junction:
@@ -260,61 +280,137 @@ class EnvironmentState(object):
     def is_multilane(self,target_location):
 
         current_waypoint = self.map.get_waypoint(target_location)
-        lane_change = current_waypoint.lane_change
-        left_lane_marking = current_waypoint.left_lane_marking
-        right_lane_marking = current_waypoint.right_lane_marking
+        if self._have_left_lane(current_waypoint) or self._have_right_lane(current_waypoint):
+            return True
+        return False
 
-        if lane_change is None:
+    
+    def get_lane(self,lane_id,reference_path):
+
+        current_waypoint = self.map.get_waypoint(self.ego_vehicle_location)
+        if lane_id == 0:
+            return self._generate_lane(current_waypoint,reference_path)
+
+        if lane_id < 0:
+            for i in range(lane_id,0):
+                if self._have_right_lane(current_waypoint):
+                    current_waypoint = current_waypoint.get_right_lane()
+                else:
+                    return None
+            return self._generate_lane(current_waypoint,reference_path)
+
+        if lane_id > 0:
+            for i in range(0,lane_id):
+                if self._have_left_lane(current_waypoint):
+                    current_waypoint = current_waypoint.get_left_lane()
+                else:
+                    return None
+            return self._generate_lane(current_waypoint,reference_path)
+            
+    def _have_left_lane(self,waypoint):
+        lane_change = waypoint.lane_change
+        left_lane_marking = waypoint.left_lane_marking
+        if lane_change is None or lane_change == carla.LaneChange.Right:
             return False
-        if left_lane_marking.type is not carla.LaneMarkingType.Broken and right_lane_marking.type is not carla.LaneMarkingType.Broken:
+        
+        if left_lane_marking.type is not carla.LaneMarkingType.Broken:
             return False
 
         return True
 
-    
-    def get_lane(self,lane_id):
+    def _have_right_lane(self,waypoint):
+        lane_change = waypoint.lane_change
+        right_lane_marking = waypoint.right_lane_marking
+        if lane_change is None or lane_change == carla.LaneChange.Left:
+            return False
+        
+        if right_lane_marking.type is not carla.LaneMarkingType.Broken:
+            return False
 
-        current_waypoint = self.map.get_waypoint(self.ego_vehicle_location)
+        return True
+
+    def _is_parallel(self,begin1,end1,begin2,end2):
+        # vehicle_transform = ego_vehicle_transform
+        v_begin = begin1.transform.location
+        v_end = end1.transform.location
+
+        v_vec = np.array([v_end.x - v_begin.x, v_end.y - v_begin.y, 0.0])
+
+        w_begin = begin2.transform.location
+        w_end = end2.transform.location
+
+        w_vec = np.array([w_end.x - w_begin.x, w_end.y - w_begin.y, 0.0])
+
+        _dot = math.acos(np.clip(np.dot(w_vec, v_vec) /
+                            (np.linalg.norm(w_vec) * np.linalg.norm(v_vec)), -1.0, 1.0))
+
+        _cross = np.cross(v_vec, w_vec)
+        if _cross[2] < 0:
+            _dot *= -1.0
+        
+        if abs(_dot) < np.pi/18:
+            return True
+        else:
+            return False
+
+
+    def _generate_lane(self,start_waypoint,reference_path):
+
         lane = LaneState()
         central_point_list = []
-        length_before_interaction = 1
-
-        if lane_id == 0:
-            target_waypoint_list = current_waypoint.next(length_before_interaction)
+        
+        step = self.lane_step
+        last_waypoint = start_waypoint
+        last_reference_waypoint = reference_path[0][0]
+        search_id = step
+        target_reference_waypoint = reference_path[search_id][0]
+        length_before_interaction = step
+        target_waypoint_list = start_waypoint.next(length_before_interaction)
+        if target_waypoint_list is not None:
             target_waypoint = target_waypoint_list[0]
-            central_point_list.append(target_waypoint)
-            target_waypoint_is_multilane = self.is_multilane(target_waypoint.transform.location)
-            while target_waypoint_is_multilane and length_before_interaction < 100:
-                length_before_interaction += 1
-                target_waypoint_list = current_waypoint.next(length_before_interaction)
-                target_waypoint = target_waypoint_list[0]
-                central_point_list.append(target_waypoint)
-                target_waypoint_is_multilane = self.is_multilane(target_waypoint.transform.location)
-
-            lane.length_before_interaction = length_before_interaction
-            lane.central_point_list = central_point_list
+        else:
+            lane.length_before_interaction = 1
+            lane.central_point_list = []
             return lane
 
+        central_point_list.append(target_waypoint)
 
-        if lane_id < 0:
-            left_waypoint = current_waypoint.get_left_lane()
-            for i in range(lane_id,-1):
-                left_waypoint = left_waypoint.get_left_lane()
-            
+        is_parallel = self._is_parallel(last_waypoint,target_waypoint,last_reference_waypoint,target_reference_waypoint)
+        if distance_between_two_loc(target_reference_waypoint.transform.location,last_reference_waypoint.transform.location) > step + 2:
+            is_parallel = True
 
-        # left_waypoint = current_waypoint.get_left_lane()
-        # left_waypoint = left_waypoint.get_left_lane()
-        # left_waypoint_lane_change = left_waypoint.lane_change
-        # print(left_waypoint_lane_change)
-        # right_waypoint = current_waypoint.get_right_lane()
-        # right_waypoint_location = right_waypoint.transform.location
-        # right_lane_marking = current_waypoint.right_lane_marking.lane_change
+        while length_before_interaction < 180 and is_parallel:
+            search_id += step
+            length_before_interaction += step
+            last_waypoint = target_waypoint
+            last_reference_waypoint = target_reference_waypoint
+            if search_id > len(reference_path)-5:
+                break
+            target_waypoint = None
+            target_reference_waypoint = reference_path[search_id][0]
+            target_waypoint_list = last_waypoint.next(step)
+            if target_waypoint_list is None:
+                break
+
+            if distance_between_two_loc(target_reference_waypoint.transform.location,last_reference_waypoint.transform.location) > step + 2:
+                target_waypoint = target_waypoint_list[0]
+                central_point_list.append(target_waypoint)
+                is_parallel = True
+                continue
+
+            for next_waypoint in target_waypoint_list:
+                if self._is_parallel(last_waypoint,next_waypoint,last_reference_waypoint,target_reference_waypoint) or location_on_reference_path(reference_path,next_waypoint.transform.location,6):
+                    target_waypoint = next_waypoint
         
-        # print(right_lane_marking)
+            if target_waypoint is None:
+                break
+            central_point_list.append(target_waypoint)
+            is_parallel = self._is_parallel(last_waypoint,target_waypoint,last_reference_waypoint,target_reference_waypoint)
 
-        # begin = self.ego_vehicle_location
-        # end = right_waypoint_location
-        # self.world.debug.draw_arrow(begin, end, arrow_size=0.3, life_time=-0.1)
+        lane.length_before_interaction = length_before_interaction
+        lane.central_point_list = central_point_list
 
-        
+        return lane
+
+
 

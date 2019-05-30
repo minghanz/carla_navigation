@@ -20,7 +20,7 @@ def location_on_the_path(local_path,location,sensitive_range):
 
     v_loc = location
     d_to_waypoints = []
-    for (waypoint,_) in local_path:
+    for waypoint in local_path:
         w_loc = waypoint.transform.location
         d = distance_between_two_loc(v_loc,w_loc)
         d_to_waypoints.append(d)
@@ -30,6 +30,37 @@ def location_on_the_path(local_path,location,sensitive_range):
         return True
 
     return False
+
+def decouple_local_path(local_path):
+
+    decouple_local_path = []
+    for (waypoint,_) in local_path:
+        decouple_local_path.append(waypoint)
+
+    return decouple_local_path
+
+
+def waypoint_on_local_path_after_d(local_path,distance):
+    w_last_loc = local_path[0].transform.location
+    target_distance = distance
+    target_location = None
+    distance_to_ego = 0
+    for waypoint in local_path:
+        w_loc = waypoint.transform.location
+        distance_to_ego += distance_between_two_loc(w_loc,w_last_loc)
+        if distance_to_ego > target_distance:
+            w_diff_vec = np.array([w_loc.x - w_last_loc.x, w_loc.y - w_last_loc.y, 0.0])
+            w_last_vec = np.array([w_last_loc.x,w_last_loc.y,0.0])
+            w_target = w_last_vec + w_diff_vec * (1-(distance_to_ego-target_distance)/np.linalg.norm(w_diff_vec))
+            target_location = carla.Location(x=w_target[0], y=w_target[1], z=0.0)
+            break
+        w_last_loc = w_loc
+
+    if target_location is None:
+        target_location = w_loc
+
+    return target_location
+
 
 class Decision(object):
     """
@@ -46,7 +77,7 @@ class Decision(object):
         if front_vehicle is not None:
             dis_to_front = distance_between_two_loc(EnvironmentInfo.ego_vehicle_location,front_vehicle.location)
             front_speed = front_vehicle.speed
-            print(dis_to_front,front_speed*3.6)
+            # print(dis_to_front,front_speed*3.6)
         ego_v = EnvironmentInfo.ego_vehicle_speed
         speed_limit = EnvironmentInfo.speed_limit
 
@@ -76,14 +107,14 @@ class Decision(object):
         return v+acc*self.decision_dt
 
 
-    def _Find_front_vehicle(self,local_path,EnvironmentInfo):   
+    def _Find_front_vehicle(self,local_path,EnvironmentInfo,gap_between_two_points):   
 
         # find front vehicle on the planned path
         nearest_distance = 50
         front_vehicle = None
         for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
             d = distance_between_two_loc(target_vehicle.location, EnvironmentInfo.ego_vehicle_location)
-            if location_on_the_path(local_path,target_vehicle.location,3.6):
+            if location_on_the_path(local_path,target_vehicle.location,gap_between_two_points+2.6):
                 if d < nearest_distance:
                     nearest_distance = d
                     front_vehicle = target_vehicle
@@ -115,7 +146,7 @@ class Decision(object):
         target_distance = time * speed 
         target_location = None
         distance_to_ego = 0
-        for i, (waypoint, _) in enumerate(local_path):
+        for waypoint in local_path:
             w_loc = waypoint.transform.location
             distance_to_ego += distance_between_two_loc(w_loc,w_last_loc)
             if distance_to_ego > target_distance:
@@ -132,7 +163,7 @@ class Decision(object):
         return target_location
 
 
-    def _reachable_set_analysis(self,local_path,EnvironmentInfo,IDM_speed):
+    def _reachable_set_analysis(self,local_path,EnvironmentInfo,IDM_speed,gap_between_two_points):
         """
         analysis avaliable velocity set.
         prediction assumption:
@@ -149,7 +180,7 @@ class Decision(object):
                 if target_pedestrian.speed < 1/3.6:
                     continue
                 pred_surrounding_loc = self._pred_location_after_t(target_pedestrian,pred_t)
-                if not location_on_the_path(local_path,pred_surrounding_loc,4):
+                if not location_on_the_path(local_path,pred_surrounding_loc,gap_between_two_points+3):
                     continue
                 else:
                     return 0
@@ -160,12 +191,12 @@ class Decision(object):
             for pred_t in np.arange(0.0, 3.0, 0.5):
                 pred_ego_loc = self._ego_vehicle_location_after_t_using_v(local_path,EnvironmentInfo,pred_t,target_speed)
                 for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
-                    if target_vehicle.speed < 5/3.6 and not location_on_the_path(local_path,target_vehicle.location,4):
-                        continue
-                    if not EnvironmentInfo.in_intersection and not EnvironmentInfo._vehicle_is_front(target_vehicle):
-                        continue
+                    if target_vehicle.speed < 5/3.6 and not location_on_the_path(local_path,target_vehicle.location,gap_between_two_points+3):
+                        continue         
+                    # if not EnvironmentInfo.in_intersection and not EnvironmentInfo._vehicle_is_front(target_vehicle) and EnvironmentInfo.ego_vehicle_speed > 10/3.6:
+                    #     continue
                     pred_surrounding_loc = self._pred_location_after_t(target_vehicle,pred_t)
-                    if not location_on_the_path(local_path,pred_surrounding_loc,4):
+                    if not location_on_the_path(local_path,pred_surrounding_loc,gap_between_two_points+3):
                         continue
                     if distance_between_two_loc(pred_ego_loc,pred_surrounding_loc) < safe_range:
                         safe_speed = False
@@ -180,9 +211,8 @@ class Decision(object):
         return 0
 
 
-    def _response_traffic_light(self,local_path,EnvironmentInfo,desired_speed):
+    def _response_traffic_light(self,EnvironmentInfo,desired_speed):
         
-        prediction_time = 2
         if EnvironmentInfo.front_traffic_light:
             return desired_speed
 
@@ -195,8 +225,6 @@ class Decision(object):
         else:
             if distance_to_stop < 10 + EnvironmentInfo.ego_vehicle_speed*EnvironmentInfo.ego_vehicle_speed/2/2:
                 return 0
-            # if desired_speed * prediction_time > distance_to_stop:
-            #     return  distance_to_stop/prediction_time 
             
             return desired_speed
 
@@ -204,18 +232,59 @@ class Decision(object):
 
     def generate_decision(self,local_path,EnvironmentInfo,CognitionState):
 
-        front_vehicle = self._Find_front_vehicle(local_path,EnvironmentInfo)
-        IDM_speed = self._IDM_desired_speed(EnvironmentInfo,front_vehicle)
-        avoidance_speed = self._reachable_set_analysis(local_path,EnvironmentInfo,IDM_speed)
-        traffic_light_response_speed = self._response_traffic_light(local_path,EnvironmentInfo,avoidance_speed)
-        target_speed = traffic_light_response_speed
+        # front_vehicle = self._Find_front_vehicle(local_path,EnvironmentInfo)
+        # IDM_speed = self._IDM_desired_speed(EnvironmentInfo,front_vehicle)
+        # avoidance_speed = self._reachable_set_analysis(local_path,EnvironmentInfo,IDM_speed)
+        # traffic_light_response_speed = self._response_traffic_light(local_path,EnvironmentInfo,avoidance_speed)
+        
+        local_path_after_decision, gap_between_two_points = self.generate_lateral_decision(local_path,EnvironmentInfo,CognitionState)
 
-        target_waypoint_location = self.generate_control_target_point(local_path,EnvironmentInfo,CognitionState)
+        target_speed = self.generate_longitudinal_decision(local_path_after_decision,EnvironmentInfo,CognitionState,gap_between_two_points)
+
+        target_waypoint_location = self.generate_control_target_point(local_path_after_decision,EnvironmentInfo,CognitionState)
 
         return target_speed,target_waypoint_location
 
 
-    def generate_control_target_point(self,local_path,EnvironmentInfo,CognitionState):
+
+    def generate_longitudinal_decision(self,local_path,EnvironmentInfo,CognitionState,gap_between_two_points):
+
+        front_vehicle = self._Find_front_vehicle(local_path,EnvironmentInfo,gap_between_two_points)
+        IDM_speed = self._IDM_desired_speed(EnvironmentInfo,front_vehicle)
+        avoidance_speed = self._reachable_set_analysis(local_path,EnvironmentInfo,IDM_speed,gap_between_two_points)
+        traffic_light_response_speed = self._response_traffic_light(EnvironmentInfo,avoidance_speed)
+        target_speed = traffic_light_response_speed
+
+        return target_speed
+
+
+
+    def generate_lateral_decision(self,local_path,EnvironmentInfo,CognitionState):
+
+        if CognitionState.follow_path:
+            local_path_after_decision = decouple_local_path(local_path)
+            step = 1
+        else:
+            target_lane_id = CognitionState.target_lane_id
+            if target_lane_id < 0:
+                target_lane_id = 2
+            for lane in CognitionState.lane_list:
+                if lane.id == target_lane_id:
+                    target_lane = lane
+                    break
+
+            local_path_after_decision = target_lane.central_point_list
+            step = EnvironmentInfo.lane_step
+            
+            if len(local_path_after_decision) < 4:
+                local_path_after_decision = decouple_local_path(local_path)
+                step = 1
+        
+        return local_path_after_decision,step
+
+
+
+    def generate_control_target_point(self,local_path_after_decision,EnvironmentInfo,CognitionState):
         
         if EnvironmentInfo.ego_vehicle_speed > 10:
             control_target_dt = 0.25
@@ -225,26 +294,8 @@ class Decision(object):
         if control_target_distance < 3:
             control_target_distance = 3
 
-        
-        if CognitionState.follow_path:
-            waypoint, _ = local_path[0]
-            w_last_loc = waypoint.transform.location 
-            target_waypoint_location = None
-            distance_to_ego = 0
-            for i, (waypoint, _) in enumerate(local_path):
-                w_loc = waypoint.transform.location
-                distance_to_ego += distance_between_two_loc(w_loc,w_last_loc)
-                if distance_to_ego > control_target_distance:
-                    w_diff_vec = np.array([w_loc.x - w_last_loc.x, w_loc.y - w_last_loc.y, 0.0])
-                    w_last_vec = np.array([w_last_loc.x,w_last_loc.y,0.0])
-                    w_target = w_last_vec + w_diff_vec * (1-(distance_to_ego-control_target_distance)/np.linalg.norm(w_diff_vec))
-                    target_waypoint_location = carla.Location(x=w_target[0], y=w_target[1], z=EnvironmentInfo.ego_vehicle_location.z)
-                    break
-                w_last_loc = w_loc
-
-            if target_waypoint_location is None:
-                target_waypoint_location = w_loc
-        else:
-            target_waypoint_location = EnvironmentInfo.longitudinal_position_after_distance(control_target_distance)
-
+        target_waypoint_location = waypoint_on_local_path_after_d(local_path_after_decision,control_target_distance)
         return target_waypoint_location
+
+
+    
