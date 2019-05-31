@@ -97,7 +97,16 @@ class CognitionState(object):
 
         self.lane_list = []
 
+        if reference_path is None:
+            self.ego_y = 1
+            return 
+
         central_lane = EnvironmentInfo.get_lane(0,reference_path)
+
+        if central_lane is None:
+            self.ego_y = 1
+            return
+
         central_lane.id = 0
         self.lane_list.append(central_lane)
 
@@ -168,6 +177,12 @@ class CognitionState(object):
     def _should_follow_lane(self,reference_path,EnvironmentInfo):
 
         self.follow_path = False
+
+        if len(self.lane_list) < 2:
+            self.follow_path = True
+        
+        if self.target_lane_id == -2:
+            self.follow_path = True
 
         if self.length_before_follow_lane > 0 and self.length_before_follow_lane < 50 and self.ego_y == self.target_lane_id and location_on_the_path(reference_path,EnvironmentInfo.ego_vehicle_location,4):
             self.follow_path = True

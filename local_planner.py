@@ -194,6 +194,18 @@ class LocalPlanner(object):
         # Get reference plan
         self._generate_local_path()
 
+        if len(self._waypoint_buffer) < 5:
+
+            control = carla.VehicleControl()
+            control.steer = 0.0
+            control.throttle = 0.0
+            control.brake = 1.0
+            control.hand_brake = False
+            control.manual_gear_shift = False
+            print("-------check------------")
+
+            return control
+
         # Cognition
         self.CognitionState.scenario_cognition(self._waypoint_buffer,self.EnvironmentInfo)
 

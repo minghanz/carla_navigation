@@ -165,7 +165,7 @@ class Decision(object):
             w_last_loc = w_loc
 
         if target_location is None:
-            target_location = w_loc
+            target_location = w_last_loc
 
         return target_location
 
@@ -194,7 +194,7 @@ class Decision(object):
 
         #### for vehicle
 
-        if not self.follow_path:
+        if not self.follow_path and not EnvironmentInfo.in_intersection:
             return target_speed
 
         while target_speed > 0:
@@ -249,6 +249,8 @@ class Decision(object):
         target_speed = self.generate_longitudinal_decision(local_path_after_decision,EnvironmentInfo,CognitionState,gap_between_two_points)
 
         target_waypoint_location = self.generate_control_target_point(local_path_after_decision,EnvironmentInfo,CognitionState)
+
+        print("follow_path:", self.follow_path)
 
         return target_speed,target_waypoint_location
 
@@ -324,7 +326,7 @@ class Decision(object):
 
             if right_desired_speed >= left_desired_speed and right_desired_speed > current_desired_speed + 5:
                 return right_lane
-                
+
             return ego_lane
 
         ## LaneKeeping if ego_vehicle is far from exit
@@ -353,17 +355,31 @@ class Decision(object):
 
     def safe_to_change_lane(self,lane,EnvironmentInfo,CognitionState):
 
+        front_safe = False
+        rear_safe = False
+        if lane.front_vehicle is None:
+            front_safe = True
+        else:
+            d_front = distance_between_two_loc(lane.front_vehicle.location,EnvironmentInfo.ego_vehicle_location)
+            front_v = lane.front_vehicle.speed
+            ego_v = EnvironmentInfo.ego_vehicle_speed
+            if d_front > 5 + 3*(ego_v-front_v):
+                front_safe = True
+        
         if lane.rear_vehicle is None:
+            rear_safe = True
+
+        else:
+            d_rear = distance_between_two_loc(lane.rear_vehicle.location,EnvironmentInfo.ego_vehicle_location)
+            rear_v = lane.rear_vehicle.speed
+            ego_v = EnvironmentInfo.ego_vehicle_speed
+
+            if d_rear > 5 + 3*(rear_v-ego_v):
+                rear_safe = True
+
+        if front_safe and rear_safe:
             return True
-
-        d = distance_between_two_loc(lane.rear_vehicle.location,EnvironmentInfo.ego_vehicle_location)
-
-        rear_v = lane.rear_vehicle.speed
-        ego_v = EnvironmentInfo.ego_vehicle_speed
-
-        if d > 5 + 3*(rear_v-ego_v):
-            return True
-
+            
         return False
 
     def generate_control_target_point(self,local_path_after_decision,EnvironmentInfo,CognitionState):
