@@ -11,6 +11,9 @@ from agents.tools.clock import WorldClock
 
 def location_on_reference_path(reference_path,location,sensitive_range):
 
+    if len(reference_path) < 4:
+        return False
+
     v_loc = location
     d_to_waypoints = []
     for (waypoint,_) in reference_path:

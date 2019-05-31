@@ -39,6 +39,9 @@ def location_on_the_path(local_path,location,sensitive_range):
 
 def location_on_the_path_decouple(local_path,location,sensitive_range):
 
+    if len(local_path) < 4:
+        return False
+
     v_loc = location
     d_to_waypoints = []
     for waypoint in local_path:
@@ -129,7 +132,16 @@ class CognitionState(object):
         min_length = 180
 
         for lane in self.lane_list:
-            print(lane.id,lane.length_before_interaction)
+            if lane.front_vehicle is None:
+                front_vehicle_speed = -1
+            else:
+                front_vehicle_speed = lane.front_vehicle.speed
+            if lane.rear_vehicle is None:
+                rear_vehicle_speed = -1
+            else:
+                rear_vehicle_speed = lane.rear_vehicle.speed
+
+            print(lane.id,lane.length_before_interaction,front_vehicle_speed,rear_vehicle_speed)
             if lane.length_before_interaction < min_length:
                 min_length = lane.length_before_interaction
 
@@ -157,7 +169,7 @@ class CognitionState(object):
 
         self.follow_path = False
 
-        if self.length_before_follow_lane > 0 and self.length_before_follow_lane < 50 and self.ego_y is not self.target_lane_id:
+        if self.length_before_follow_lane > 0 and self.length_before_follow_lane < 50 and self.ego_y == self.target_lane_id and location_on_the_path(reference_path,EnvironmentInfo.ego_vehicle_location,4):
             self.follow_path = True
 
     def get_lane_of_id(self,id):

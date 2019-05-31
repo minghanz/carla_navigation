@@ -18,6 +18,10 @@ def distance_between_two_loc(loc1,loc2):
 
 def location_on_the_path(local_path,location,sensitive_range):
 
+    
+    if len(local_path) < 4:
+        return False
+
     v_loc = location
     d_to_waypoints = []
     for waypoint in local_path:
@@ -110,6 +114,9 @@ class Decision(object):
     def _Find_front_vehicle(self,local_path,EnvironmentInfo,gap_between_two_points):
 
         # find front vehicle on the planned path
+        
+
+
         nearest_distance = 50
         front_vehicle = None
         for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
@@ -186,6 +193,10 @@ class Decision(object):
                     return 0
 
         #### for vehicle
+
+        if not self.follow_path:
+            return target_speed
+
         while target_speed > 0:
             safe_speed = True
             for pred_t in np.arange(0.0, 3.0, 0.5):
@@ -193,8 +204,8 @@ class Decision(object):
                 for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
                     if target_vehicle.speed < 5/3.6 and not location_on_the_path(local_path,target_vehicle.location,gap_between_two_points+3):
                         continue
-                    # if not EnvironmentInfo.in_intersection and not EnvironmentInfo._vehicle_is_front(target_vehicle) and EnvironmentInfo.ego_vehicle_speed > 10/3.6:
-                    #     continue
+                    if not EnvironmentInfo.in_intersection and not EnvironmentInfo._vehicle_is_front(target_vehicle) and EnvironmentInfo.ego_vehicle_speed > 10/3.6:
+                        continue
                     pred_surrounding_loc = self._pred_location_after_t(target_vehicle,pred_t)
                     if not location_on_the_path(local_path,pred_surrounding_loc,gap_between_two_points+3):
                         continue
@@ -232,10 +243,6 @@ class Decision(object):
 
     def generate_decision(self,local_path,EnvironmentInfo,CognitionState):
 
-        # front_vehicle = self._Find_front_vehicle(local_path,EnvironmentInfo)
-        # IDM_speed = self._IDM_desired_speed(EnvironmentInfo,front_vehicle)
-        # avoidance_speed = self._reachable_set_analysis(local_path,EnvironmentInfo,IDM_speed)
-        # traffic_light_response_speed = self._response_traffic_light(local_path,EnvironmentInfo,avoidance_speed)
 
         local_path_after_decision, gap_between_two_points = self.generate_lateral_decision(local_path,EnvironmentInfo,CognitionState)
 
@@ -261,7 +268,8 @@ class Decision(object):
 
     def generate_lateral_decision(self,local_path,EnvironmentInfo,CognitionState):
 
-        if CognitionState.follow_path:
+        self.follow_path = CognitionState.follow_path
+        if self.follow_path:
             local_path_after_decision = decouple_local_path(local_path)
             step = 1
         else:
@@ -273,6 +281,7 @@ class Decision(object):
                 step = EnvironmentInfo.lane_step
 
             if target_lane is None or len(local_path_after_decision) < 4:
+                self.follow_path = True
                 local_path_after_decision = decouple_local_path(local_path)
                 step = 1
 
@@ -296,7 +305,26 @@ class Decision(object):
             return ego_lane
 
         ## Current lane is avaliable for driving, ego vehicle can still drive on its lane
-        if ego_lane.length_before_interaction > 150:
+        if ego_lane.length_before_interaction > 170:
+
+            current_desired_speed = self._IDM_desired_speed(EnvironmentInfo,ego_lane.front_vehicle)
+            left_lane = CognitionState.get_lane_of_id(ego_y+1)
+            if left_lane is None:
+                left_desired_speed = -1
+            else:
+                left_desired_speed = self._IDM_desired_speed(EnvironmentInfo,left_lane.front_vehicle)
+            right_lane = CognitionState.get_lane_of_id(ego_y-1)
+            if right_lane is None:
+                right_desired_speed = -1
+            else:
+                right_desired_speed = self._IDM_desired_speed(EnvironmentInfo,right_lane.front_vehicle)
+            
+            if left_desired_speed >= right_desired_speed and left_desired_speed > current_desired_speed + 5:
+                return left_lane
+
+            if right_desired_speed >= left_desired_speed and right_desired_speed > current_desired_speed + 5:
+                return right_lane
+                
             return ego_lane
 
         ## LaneKeeping if ego_vehicle is far from exit
@@ -305,6 +333,8 @@ class Decision(object):
 
         if target_lane_id > ego_y and target_lane_id > 0:
             left_lane = CognitionState.get_lane_of_id(ego_y+1)
+            if left_lane is None:
+                return ego_lane
             if self.safe_to_change_lane(left_lane,EnvironmentInfo,CognitionState):
                 return left_lane
             else:
@@ -312,6 +342,8 @@ class Decision(object):
 
         if target_lane_id < ego_y and target_lane_id > 0:
             right_lane = CognitionState.get_lane_of_id(ego_y-1)
+            if right_lane is None:
+                return ego_lane
             if self.safe_to_change_lane(right_lane,EnvironmentInfo,CognitionState):
                 return right_lane
             else:
@@ -321,7 +353,18 @@ class Decision(object):
 
     def safe_to_change_lane(self,lane,EnvironmentInfo,CognitionState):
 
-        return True
+        if lane.rear_vehicle is None:
+            return True
+
+        d = distance_between_two_loc(lane.rear_vehicle.location,EnvironmentInfo.ego_vehicle_location)
+
+        rear_v = lane.rear_vehicle.speed
+        ego_v = EnvironmentInfo.ego_vehicle_speed
+
+        if d > 5 + 3*(rear_v-ego_v):
+            return True
+
+        return False
 
     def generate_control_target_point(self,local_path_after_decision,EnvironmentInfo,CognitionState):
 
