@@ -11,6 +11,9 @@ from agents.tools.clock import WorldClock
 
 def location_on_reference_path(reference_path,location,sensitive_range):
 
+    if len(reference_path) < 4:
+        return False
+
     v_loc = location
     d_to_waypoints = []
     for (waypoint,_) in reference_path:
@@ -185,7 +188,14 @@ class EnvironmentState(object):
         norm_target = np.linalg.norm(target_vector)
 
         forward_vector = np.array([math.cos(math.radians(orientation)), math.sin(math.radians(orientation))])
-        d_angle = math.degrees(math.acos(np.dot(forward_vector, target_vector) / norm_target))
+
+        costheta = np.dot(forward_vector, target_vector/norm_target) 
+
+        if abs(costheta) > 1:
+            print("---------------",costheta,target_location,current_location,orientation)
+            return True
+
+        d_angle = math.degrees(math.acos(costheta))
 
         if d_angle<90:
             return True
@@ -294,6 +304,7 @@ class EnvironmentState(object):
 
 
         current_waypoint = self.map.get_waypoint(target_location)
+
         if self._have_left_lane(current_waypoint) or self._have_right_lane(current_waypoint):
             return True
         return False
@@ -379,11 +390,17 @@ class EnvironmentState(object):
         if start_waypoint is None:
             return None
 
+        step = self.lane_step
+
+        if len(reference_path) < step+5:
+            return None
+
         lane = LaneState()
         central_point_list = []
         
-        step = self.lane_step
         last_waypoint = start_waypoint
+
+        print(reference_path[0])
         last_reference_waypoint = reference_path[0][0]
         search_id = step
         target_reference_waypoint = reference_path[search_id][0]
