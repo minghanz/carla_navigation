@@ -15,7 +15,7 @@ import math
 import numpy as np
 
 import carla
-from agents.navigation.controller import PurePersuitController   
+from agents.navigation.controller import PurePersuitController
 from agents.tools.misc import distance_vehicle, draw_waypoints
 from agents.tools.misc import get_speed
 from agents.navigation.EnvironmentState import EnvironmentState
@@ -113,7 +113,7 @@ class LocalPlanner(object):
         self.EnvironmentInfo = EnvironmentState(vehicle)
         self.CognitionState = CognitionState()
         self.Decision = Decision()
-    
+
         self.local_path = deque(maxlen=50)
 
     def __del__(self):
@@ -147,13 +147,30 @@ class LocalPlanner(object):
     def _generate_local_path(self):
 
         vehicle_transform = self.EnvironmentInfo.ego_vehicle_transform
-        while self._waypoint_buffer:
-            (waypoint,_) = self._waypoint_buffer[0]
-            angle = angle_between_ego_vehicle_direction_and_point(vehicle_transform,waypoint.transform.location)
-            if abs(angle) > np.pi/2:
-                self._waypoint_buffer.popleft()
-            else:
-                break
+
+        min_distance = 50
+        min_index = 0
+
+        index = 0
+
+        while index < 40 and self._waypoint_buffer[index]:
+            (waypoint,_) = self._waypoint_buffer[index]
+            d = distance_between_two_loc(vehicle_transform.location,waypoint.transform.location)
+            if d < min_distance:
+                min_distance = d
+                min_index = index
+            index += 1
+
+        for index in range(0, min_index):
+            self._waypoint_buffer.popleft()
+
+        # while self._waypoint_buffer:
+        #     (waypoint,_) = self._waypoint_buffer[0]
+        #     angle = angle_between_ego_vehicle_direction_and_point(vehicle_transform,waypoint.transform.location)
+        #     if abs(angle) > np.pi/2:
+        #         self._waypoint_buffer.popleft()
+        #     else:
+        #         break
 
         while self._waypoints_queue and len(self._waypoint_buffer)<self._buffer_size:
             waypoint_tuple =  self._waypoints_queue.popleft()
@@ -190,7 +207,7 @@ class LocalPlanner(object):
 
         # Environment Perception
         self.EnvironmentInfo.perception()
-        
+
         # Get reference plan
         self._generate_local_path()
 
@@ -203,7 +220,7 @@ class LocalPlanner(object):
 
         # Control
         control = self._vehicle_controller.run_step(self._target_speed, self.target_waypoint, self.EnvironmentInfo)
-        
+
         # Print States
         print("target speed:",self._target_speed*3.6,"current speed:",self.EnvironmentInfo.ego_vehicle_speed*3.6)
 

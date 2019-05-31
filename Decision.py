@@ -245,8 +245,6 @@ class Decision(object):
 
         return target_speed,target_waypoint_location
 
-
-
     def generate_longitudinal_decision(self,local_path,EnvironmentInfo,CognitionState,gap_between_two_points):
 
         front_vehicle = self._Find_front_vehicle(local_path,EnvironmentInfo,gap_between_two_points)
@@ -256,7 +254,6 @@ class Decision(object):
         target_speed = traffic_light_response_speed
 
         return target_speed
-
 
 
     def generate_lateral_decision(self,local_path,EnvironmentInfo,CognitionState):
