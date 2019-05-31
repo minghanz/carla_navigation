@@ -115,8 +115,6 @@ class Decision(object):
 
         # find front vehicle on the planned path
         
-
-
         nearest_distance = 50
         front_vehicle = None
         for target_vehicle in EnvironmentInfo.surrounding_vehicle_list:
@@ -262,6 +260,7 @@ class Decision(object):
         traffic_light_response_speed = self._response_traffic_light(EnvironmentInfo,avoidance_speed)
         target_speed = traffic_light_response_speed
 
+        print(front_vehicle,IDM_speed ,avoidance_speed,traffic_light_response_speed)
         return target_speed
 
 

@@ -213,12 +213,17 @@ class EnvironmentState(object):
         d = 2
         response_range = 30
         target_waypoint_list = current_waypoint.next(d)
+        if len(target_waypoint_list) < 1:
+            return None
         target_waypoint = target_waypoint_list[0]
         
         while not target_waypoint.is_junction and d < response_range:
             d = d+1
             target_waypoint_list = current_waypoint.next(d)
+            if len(target_waypoint_list) < 1:
+                break
             target_waypoint = target_waypoint_list[0]
+            
         if d < response_range:
             return d
         else:

@@ -210,6 +210,7 @@ class LocalPlanner(object):
 
         # Get reference plan
         self._generate_local_path()
+        print("Length:", len(self._waypoints_queue), len(self._waypoint_buffer), len(self.local_path))
 
         if len(self._waypoint_buffer) < 5:
 
