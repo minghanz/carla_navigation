@@ -153,7 +153,7 @@ class LocalPlanner(object):
 
         index = 0
 
-        while index < 40 and self._waypoint_buffer[index]:
+        while index < 40 and index < len(self._waypoint_buffer) and self._waypoint_buffer[index]:
             (waypoint,_) = self._waypoint_buffer[index]
             d = distance_between_two_loc(vehicle_transform.location,waypoint.transform.location)
             if d < min_distance:
