@@ -114,6 +114,9 @@ class LocalPlanner(object):
         self.CognitionState = CognitionState()
         self.Decision = Decision()
 
+        self.stop_time = 0
+        self.rescue = 0
+
         self.local_path = deque(maxlen=50)
 
     def __del__(self):
@@ -230,6 +233,20 @@ class LocalPlanner(object):
         # Decision
         target_speed, self.target_waypoint = self.Decision.generate_decision(self.local_path,self.EnvironmentInfo,self.CognitionState)
         self.set_speed(target_speed)
+
+        ### Avoid stuck by accident:
+
+        if self.EnvironmentInfo.ego_vehicle_speed < 2/3.6:
+            self.stop_time += 1
+        else:
+            self.stop_time = 0
+        print("stop_time:",self.stop_time,"rescue:",self.rescue)
+        if self.stop_time > 2400:
+            self.rescue = 100
+
+        if self.rescue > 0:
+            self.rescue -= 1    
+            self.set_speed(20)
 
         # Control
         control = self._vehicle_controller.run_step(self._target_speed, self.target_waypoint, self.EnvironmentInfo)
