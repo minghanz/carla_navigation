@@ -85,8 +85,12 @@ class Decision(object):
         ego_v = EnvironmentInfo.ego_vehicle_speed
         speed_limit = EnvironmentInfo.speed_limit
 
+        if EnvironmentInfo.enable_perception:
+            T = 1.6
+        else:
+            T = 1.2
+
         g0 = 7
-        T = 1.2
         v = ego_v
         if v<5:
             a = 2.73 + (5-v)/5*2
@@ -124,6 +128,12 @@ class Decision(object):
                     nearest_distance = d
                     front_vehicle = target_vehicle
 
+        if front_vehicle is not None:
+            d = distance_between_two_loc(front_vehicle.location, EnvironmentInfo.ego_vehicle_location)
+            print("front vehicle distance", d)
+        else:
+            print("front vehicle distance: None")
+        
         return front_vehicle
 
 

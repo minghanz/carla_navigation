@@ -189,7 +189,7 @@ class LocalPlanner(object):
                 break
 
 
-    def run_step(self, debug=True):
+    def run_step(self, input_data, debug=True):
         """
         Execute one step of local planning which involves running the longitudinal and lateral PID controllers to
         follow the waypoints trajectory.
@@ -209,7 +209,7 @@ class LocalPlanner(object):
             return control
 
         # Environment Perception
-        self.EnvironmentInfo.perception()
+        self.EnvironmentInfo.perception(input_data)
 
         # Get reference plan
         self._generate_local_path()
@@ -242,7 +242,7 @@ class LocalPlanner(object):
             self.stop_time = 0
         print("stop_time:",self.stop_time,"rescue:",self.rescue)
         if self.stop_time > 2400:
-            self.rescue = 100
+            self.rescue = 50
 
         if self.rescue > 0:
             self.rescue -= 1    

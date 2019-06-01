@@ -9,6 +9,16 @@ import carla
 from agents.tools.misc import get_speed
 from agents.tools.clock import WorldClock
 
+import sys
+# sys.path.append('/home/carla/Carla/scenario_runner_cz/carla-challenge-route/srunner/challenge/autoagents/yolov3')
+# sys.path.append('/home/carla/Carla/scenario_runner_cz/carla-challenge-route/srunner/challenge/autoagents')
+sys.path.append('/home/carla/Carla/binary_latest/PythonAPI/carla/agents/navigation/yolov3')
+sys.path.append('/home/carla/Carla/binary_latest/PythonAPI/carla/agents/navigation')
+from yolov3.YoloDetect import YoloDetect
+# import yolov3
+from agents.navigation.CameraProcess import CameraProcess
+from agents.navigation.SurroundingObjects import Surrounding_pedestrian, Surrounding_vehicle
+
 def location_on_reference_path(reference_path,location,sensitive_range):
 
     if len(reference_path) < 4:
@@ -53,17 +63,6 @@ class LaneState(object):
         # self.start_waypoint = None
         # self.end_waypoint = None
 
-class Surrounding_pedestrian(object):
-    def __init__(self):
-        self.location = None
-        self.speed = None
-        self.speed_direction = None
-
-class Surrounding_vehicle(object):
-    def __init__(self):
-        self.location = None
-        self.speed = None
-        self.speed_direction = None
 
 class EnvironmentState(object):
     """
@@ -95,15 +94,17 @@ class EnvironmentState(object):
 
         self.lane_step = 5
 
-        self.enable_perception = False
+        self.enable_perception = True #False
+
+        self.cam_peception = CameraProcess()
 
     
-    def perception(self):
+    def perception(self,input_data):
         """
         Interface to main loop
         """
         self.Ego_Perception()
-        self.Surrounding_Perception()
+        self.Surrounding_Perception(input_data)
         self.get_traffic_lights()
 
     """
@@ -127,10 +128,50 @@ class EnvironmentState(object):
 
         self.dt = self._clock.dt()
 
-    def Surrounding_Perception(self):   
+    def Surrounding_Perception(self,input_data):   
 
+        """
+        location: Carla.Location(x=,y=,z=)
+        speed: Float (m/s)
+        speed_direction: np.array[a,b,0.0]
+        """
         self.surrounding_vehicle_list = []
         self.surrounding_pedestrian_list = []
+
+        ## check input data
+        p = input_data
+        if p is None:
+            print("--------------------input_data is None-------------------")
+        
+        
+        # detections = self.yolo.process_input_data(p) # list of (lo, la, class)
+        # detections = self.cam_peception.process_input_data(p)
+
+        if self.enable_perception:
+            self.cam_peception.run_step(input_data, self.ego_vehicle_location, self.ego_vehicle_transform.rotation.yaw)
+
+            self.surrounding_vehicle_list_pcp = self.cam_peception.vehicle_list
+            self.surrounding_pedestrian_list_pcp = self.cam_peception.pedestrian_list
+
+        # if self.enable_perception:
+            self.surrounding_vehicle_list = self.surrounding_vehicle_list_pcp
+            self.surrounding_pedestrian_list = self.surrounding_pedestrian_list_pcp
+            return
+
+        # ## check detection result
+        # if len(detections) < 1:
+        #     print("--------------------detection is empty-------------------")
+        #     return
+        # print("------------get input data-------------------")
+
+
+        # self.surrounding_vehicle_list_pcp = []
+        # self.surrounding_pedestrian_list_pcp = []
+
+        # self.cam_peception.gen_current_frame_list(self.ego_vehicle_location, self.ego_vehicle_transform.rotation.yaw)
+        
+        
+
         actor_list = self.world.get_actors()
         vehicle_list = actor_list.filter("*vehicle*")
         pedestrian_list = actor_list.filter("*pedestrian*")
@@ -179,6 +220,25 @@ class EnvironmentState(object):
 
             self.surrounding_vehicle_list.append(add_vehicle)
 
+        # ## print the truth poses of targets
+        # print("truth\n")
+        # print("vehicle\n")
+        # for target_vehicle in self.surrounding_vehicle_list:
+        #     if self._vehicle_is_front(target_vehicle):
+        #         ###
+        #         t_loc_array = np.array([target_vehicle.location.x, target_vehicle.location.y])
+        #         print(t_loc_array)
+        #         ###
+        # print("pedestrian\n")
+        # for target_ped in self.surrounding_pedestrian_list:
+        #     if self._vehicle_is_front(target_ped):
+        #         ###
+        #         t_loc_array = np.array([target_ped.location.x, target_ped.location.y])
+        #         print(t_loc_array)
+        #         ###
+
+
+
     def _vehicle_is_front(self,surrounding_vehicle):
         target_location = surrounding_vehicle.location
         orientation = self.ego_vehicle_transform.rotation.yaw
@@ -223,7 +283,7 @@ class EnvironmentState(object):
             if len(target_waypoint_list) < 1:
                 break
             target_waypoint = target_waypoint_list[0]
-            
+
         if d < response_range:
             return d
         else:
