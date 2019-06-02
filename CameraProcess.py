@@ -9,12 +9,10 @@ sys.path.append('/home/carla/Carla/binary_latest/PythonAPI/carla/agents/navigati
 from yolov3.YoloDetect import YoloDetect
 
 from agents.navigation.SurroundingObjects import Surrounding_pedestrian, Surrounding_vehicle
+import cv2
 
 class PercpVeh():
     def __init__(self, id=None, x=None, y=None, vx=None, vy=None, simple_veh=None):
-        # self.location = None #carla.Location(x=0, y=0, z=0)
-        # self.speed = None
-        self.last_location = None #carla.Location(x=0, y=0, z=0)
 
         self.matched = True
         self.lost_count = 0
@@ -25,10 +23,11 @@ class PercpVeh():
 
         assert id is not None, "id should be given"
         self.id = id
-        # self.time = time
 
         if simple_veh is not None:
             self.state = np.array([simple_veh.location.x, simple_veh.location.y, 5, 5])[:,np.newaxis]
+            self.u = simple_veh.u
+            self.v = simple_veh.v
         elif x is None:
             self.state = None
         else:
@@ -43,6 +42,8 @@ class PercpVeh():
         if simple_veh is not None:
             x = simple_veh.location.x
             y = simple_veh.location.y
+            self.u = simple_veh.u
+            self.v = simple_veh.v
             self.filter(x, y)
             self.matched = True
             self.lost_count = 0
@@ -51,12 +52,6 @@ class PercpVeh():
             self.lost_count += 1
     
     def filter(self, x, y):
-    # def filter(self, x, y, time):
-        # if self.state is None:
-        #     # self.time = time
-        #     self.state = np.array([x, y, 5, 5])[:,np.newaxis]
-        #     self.sigma = np.diag([1,1,50,50])
-        # else:
         self.last_location = self.location
         # dt = time - self.time
         dt = 0.05
@@ -180,7 +175,7 @@ class CameraProcess(object):
         array = input_data['Left'][1]
         array = np.ascontiguousarray(array[:, :, :3])
         array = np.ascontiguousarray(array[:, :, ::-1])
-        detections = self.yolo.run(array, frame_id=input_data['Left'][0])
+        detections, self.im0 = self.yolo.run(array, frame_id=input_data['Left'][0])
         return detections
 
     def gen_current_frame_list(self, detections, pos_self, yaw_self):
@@ -194,73 +189,79 @@ class CameraProcess(object):
         for detect in detections:
             xy_local = np.array([detect[0], detect[1]]).reshape((2, 1))
             yaw = math.radians(yaw_self)
-            # print(yaw)
             R_mat = np.array([[np.cos(yaw), -np.sin(yaw)], [np.sin(yaw), np.cos(yaw)]])
             xy_global = R_mat.dot(xy_local) + xy_self
-            # print(xy_local.flatten())
-            # print(xy_global.flatten())
-            # print('detect', detect[2])
             if detect[2] == 'car' or detect[2] == 'truck' or detect[2] == 'bus':
                 obj = Surrounding_vehicle()
                 obj.location = carla.Location(x=xy_global[0,0], y=xy_global[1,0],z=0)
                 obj.speed = 0
                 obj.speed_direction = np.array([xy_local[0], xy_local[1], 0])
+                obj.u = detect[3]
+                obj.v = detect[4]
                 self.vehicle_list_cur.append(obj)
             elif detect[2] == 'person' or detect[2] == 'bicycle' or detect[2] == 'motorcycle':
                 obj = Surrounding_pedestrian()
                 obj.location = carla.Location(x=xy_global[0,0], y=xy_global[1,0],z=0)
                 obj.speed = 0
                 obj.speed_direction = np.array([xy_local[0,0], xy_local[1,0], 0])
+                obj.u = detect[3]
+                obj.v = detect[4]
                 self.pedestrian_list_cur.append(obj)
-
-        ## print the perception poses from targets 
-        # print("perception\n")
-        # print("vehicle\n")
-        # for target_vehicle in self.vehicle_list_cur:
-        #     t_loc_array = np.array([target_vehicle.location.x, target_vehicle.location.y])
-        #     print(t_loc_array)
-        # print("pedestrian\n")
-        # for target_ped in self.pedestrian_list_cur:
-        #     t_loc_array = np.array([target_ped.location.x, target_ped.location.y])
-        #     print(t_loc_array)
 
     def run_step(self, input_data, pos_self, yaw_self):
         detections = self.process_input_data(input_data)
         # print the perception poses from targets 
-        # print("\n perception")
-        # for target_vehicle in detections:
-        #     print(target_vehicle)
+        print("\nPerception")
+        for target_vehicle in detections:
+            print(target_vehicle)
 
         self.gen_current_frame_list(detections, pos_self, yaw_self)
 
-        # print("\n needed perception")
-        # print("vehicle")
-        # for target_vehicle in self.vehicle_list_cur:
-        #     # print(type(target_vehicle))
-        #     # t_loc = target_vehicle.location
-        #     # t_loc_array = np.array([t_loc.x, t_loc.y])
-        #     t_loc_array = np.array([target_vehicle.location.x, target_vehicle.location.y])
-        #     print(t_loc_array)
-        # print("pedestrian")
-        # for target_ped in self.pedestrian_list_cur:
-        #     t_loc_array = np.array([target_ped.location.x, target_ped.location.y])
-        #     print(t_loc_array)
+        print("\nNeeded perception")
+        print("vehicle")
+        for target_vehicle in self.vehicle_list_cur:
+            # print(type(target_vehicle))
+            # t_loc = target_vehicle.location
+            # t_loc_array = np.array([t_loc.x, t_loc.y])
+            t_loc_array = np.array([target_vehicle.location.x, target_vehicle.location.y])
+            print(t_loc_array)
+        print("pedestrian")
+        for target_ped in self.pedestrian_list_cur:
+            t_loc_array = np.array([target_ped.location.x, target_ped.location.y])
+            print(t_loc_array)
 
         self.vehicle_list.updatelist(self.vehicle_list_cur)
         self.pedestrian_list.updatelist(self.pedestrian_list_cur)
 
-        # print("\n tracked")
-        # print("vehicle")
-        # for target_vehicle in self.vehicle_list:
-        #     # print(type(target_vehicle))
-        #     # t_loc = target_vehicle.location
-        #     # t_loc_array = np.array([t_loc.x, t_loc.y])
-        #     t_loc_array = np.array([target_vehicle.location.x, target_vehicle.location.y])
-        #     print(t_loc_array)
-        # print("pedestrian")
-        # for target_ped in self.pedestrian_list:
-        #     t_loc_array = np.array([target_ped.location.x, target_ped.location.y])
-        #     print(t_loc_array)
+        print("\nTracked")
+        print("vehicle")
+        for target_vehicle in self.vehicle_list:
+            # print(type(target_vehicle))
+            # t_loc = target_vehicle.location
+            # t_loc_array = np.array([t_loc.x, t_loc.y])
+            t_loc_array = np.array([target_vehicle.location.x, target_vehicle.location.y])
+            print(t_loc_array)
+        print("pedestrian")
+        for target_ped in self.pedestrian_list:
+            t_loc_array = np.array([target_ped.location.x, target_ped.location.y])
+            print(t_loc_array)
+
+        self.drawWorldCoord()
+
+    def drawWorldCoord(self):
+        tl = round(0.002 * max(self.im0.shape[0:2])) + 1  # line thickness
+        tf = max(tl - 1, 1)  # font thickness
+        for veh in self.pedestrian_list:
+            cv2.putText(self.im0, '%.1f %.1f'%(veh.location.x, veh.location.y), (veh.u, veh.v+20), 0, tl/3 - 0.2, [255, 0, 0], thickness=tf, lineType=cv2.LINE_AA)
+        for veh in self.vehicle_list:
+            cv2.putText(self.im0, '%.1f %.1f'%(veh.location.x, veh.location.y), (veh.u, veh.v+20), 0, tl/3 - 0.2, [255, 0, 0], thickness=tf, lineType=cv2.LINE_AA)
+        
+        # imgplot = plt.imshow(im0)
+        # # imgplot = plt.imshow(im0[:,:,::-1])
+        # plt.pause(0.01)
+
+    # def drawTruth(self, true_veh_list, true_ped_list):
+
         
         
 

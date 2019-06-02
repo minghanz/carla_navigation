@@ -23,7 +23,7 @@ class YoloDetect():
         conf_thres=0.5,
         nms_thres=0.5,
         save_txt=False,
-        save_images=True,
+        save_images=False,
         webcam=False):
         
         self.device = torch_utils.select_device()
@@ -83,7 +83,7 @@ class YoloDetect():
 
         t = time.time()
         save_path = str(Path(self.output) / Path(path).name)
-        # print("save path:" , os.path.abspath(save_path))
+        print("save path:" , os.path.abspath(save_path))
 
         # Get detections
         img = torch.from_numpy(img).unsqueeze(0).to(self.device)
@@ -147,21 +147,15 @@ class YoloDetect():
             cv2.putText(img, label, (c1[0], c1[1] - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
 
             ### calculate real world position relative to self vehicle 
-            # pos = cal_real_pos(int(x[0] + x[2])/2, int(x[3]), img.shape)
-
-            # u = int(x[0] + x[2])/2
-            # v = int(x[3])
-            # u = np.array([u])
-            # v = np.array([v])
-            # lo, la = self.cam.img2world(u, v)
-            # pos = (lo[0], la[0], labelclass)
             pos = self.calc_real_world_pos(x, labelclass)
             lo = pos[0]
             la = pos[1]
+            u = pos[3]
+            v = pos[4]
             
-            # cv2.putText(img, 'lo %.1f la %.1f'%(pos[1], pos[0]), ((x[0] + x[2])/2, x[3]+2), 0, tl/3, [255, 0, 0], thickness=tf, lineType=cv2.LINE_AA)
-            cv2.putText(img, 'lo %.1f'%(lo), ((x[0] + x[2])/2, x[3]+5), 0, tl/3 - 0.2, [255, 0, 0], thickness=tf, lineType=cv2.LINE_AA)
-            cv2.putText(img, 'la %.1f'%(la), ((x[0] + x[2])/2, x[3]+20), 0, tl/3 - 0.2, [255, 0, 0], thickness=tf, lineType=cv2.LINE_AA)
+            cv2.putText(img, '%.1f, %.1f'%(lo, la), (u, v+5), 0, tl/3 - 0.2, [255, 0, 0], thickness=tf, lineType=cv2.LINE_AA)
+            # cv2.putText(img, 'lo %.1f'%(lo), ((x[0] + x[2])/2, x[3]+5), 0, tl/3 - 0.2, [255, 0, 0], thickness=tf, lineType=cv2.LINE_AA)
+            # cv2.putText(img, 'la %.1f'%(la), ((x[0] + x[2])/2, x[3]+20), 0, tl/3 - 0.2, [255, 0, 0], thickness=tf, lineType=cv2.LINE_AA)
 
             return pos
         else:
@@ -173,6 +167,6 @@ class YoloDetect():
         u = np.array([u])
         v = np.array([v])
         lo, la = self.cam.img2world(u, v)
-        pos = (lo[0], la[0], labelclass)
+        pos = (lo[0], la[0], labelclass, u, v)
         return pos
 

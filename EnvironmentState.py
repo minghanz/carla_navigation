@@ -147,30 +147,16 @@ class EnvironmentState(object):
         # detections = self.yolo.process_input_data(p) # list of (lo, la, class)
         # detections = self.cam_peception.process_input_data(p)
 
-        if self.enable_perception:
+        run_both = True
+
+        if self.enable_perception or run_both:
             self.cam_peception.run_step(input_data, self.ego_vehicle_location, self.ego_vehicle_transform.rotation.yaw)
 
             self.surrounding_vehicle_list_pcp = self.cam_peception.vehicle_list
             self.surrounding_pedestrian_list_pcp = self.cam_peception.pedestrian_list
 
-        # if self.enable_perception:
-            self.surrounding_vehicle_list = self.surrounding_vehicle_list_pcp
-            self.surrounding_pedestrian_list = self.surrounding_pedestrian_list_pcp
-            return
-
-        # ## check detection result
-        # if len(detections) < 1:
-        #     print("--------------------detection is empty-------------------")
-        #     return
-        # print("------------get input data-------------------")
-
-
-        # self.surrounding_vehicle_list_pcp = []
-        # self.surrounding_pedestrian_list_pcp = []
-
-        # self.cam_peception.gen_current_frame_list(self.ego_vehicle_location, self.ego_vehicle_transform.rotation.yaw)
-        
-        
+        self.surrounding_pedestrian_list_true = []
+        self.surrounding_vehicle_list_true = []
 
         actor_list = self.world.get_actors()
         vehicle_list = actor_list.filter("*vehicle*")
@@ -195,7 +181,7 @@ class EnvironmentState(object):
             p_vec = p_vec/np.linalg.norm(p_vec)
             add_pedestrian.speed_direction = p_vec
 
-            self.surrounding_pedestrian_list.append(add_pedestrian)
+            self.surrounding_pedestrian_list_true.append(add_pedestrian)
 
         for target_vehicle in vehicle_list:
             # do not account for the ego vehicle
@@ -218,24 +204,17 @@ class EnvironmentState(object):
             v_vec = v_vec/np.linalg.norm(v_vec)
             add_vehicle.speed_direction = v_vec
 
-            self.surrounding_vehicle_list.append(add_vehicle)
+            self.surrounding_vehicle_list_true.append(add_vehicle)
 
-        # ## print the truth poses of targets
-        # print("truth\n")
-        # print("vehicle\n")
-        # for target_vehicle in self.surrounding_vehicle_list:
-        #     if self._vehicle_is_front(target_vehicle):
-        #         ###
-        #         t_loc_array = np.array([target_vehicle.location.x, target_vehicle.location.y])
-        #         print(t_loc_array)
-        #         ###
-        # print("pedestrian\n")
-        # for target_ped in self.surrounding_pedestrian_list:
-        #     if self._vehicle_is_front(target_ped):
-        #         ###
-        #         t_loc_array = np.array([target_ped.location.x, target_ped.location.y])
-        #         print(t_loc_array)
-        #         ###
+        # self.cam_peception.drawTruth(self.surrounding_vehicle_list_true, self.surrounding_pedestrian_list_true)
+
+
+        if self.enable_perception:
+            self.surrounding_vehicle_list = self.surrounding_vehicle_list_pcp
+            self.surrounding_pedestrian_list = self.surrounding_pedestrian_list_pcp
+        else:
+            self.surrounding_vehicle_list = self.surrounding_vehicle_list_true
+            self.surrounding_pedestrian_list = self.surrounding_pedestrian_list_true
 
 
 
